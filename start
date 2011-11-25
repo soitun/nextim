@@ -1,0 +1,5 @@
+#!/bin/bash
+
+./nextimctl start
+sleep 3
+./nextimctl status

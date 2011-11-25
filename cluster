@@ -1,0 +1,5 @@
+#/bin/bash
+
+./nextimctl cluster $1
+sleep 3
+./nextimctl status

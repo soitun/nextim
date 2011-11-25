@@ -1,0 +1,24 @@
+#!/bin/sh
+OS=`uname`
+PLT=`uname -p`
+DIST=nextim
+rm -rf $DIST
+mkdir $DIST
+./gen_release nextim.config
+cp ../nextimctl $DIST
+cp ../start $DIST
+cp ../stop $DIST
+cp ../LICENSE* $DIST
+cp ../README* $DIST
+cp -R ../etc $DIST
+cp -R ../ebin $DIST
+cp -R ../priv $DIST
+cp -R ../var  $DIST
+rm -R $DIST/var/log/*
+rm -R $DIST/var/data/*
+sed 's/ERL=erl/ERL=.\/bin\/erl/g' $DIST/nextimctl > $DIST/nextimctl.tmp
+mv $DIST/nextimctl.tmp $DIST/nextimctl
+chmod +x $DIST/nextimctl
+
+tar czvf nextim-${OS}-${PLT}-3.0.tgz $DIST
+

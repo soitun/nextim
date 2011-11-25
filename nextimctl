@@ -1,0 +1,142 @@
+#!/bin/bash
+
+
+#define default configuration
+POLL=true
+SMP=disable
+ERL=erl
+ERL_MAX_PORTS=32000
+ERL_PROCESSES=250000
+ERL_MAX_ETS_TABLES=1400
+NODE_NAME=nextim
+ROOTDIR=`cd $(dirname $0); pwd`
+EBINS=$ROOTDIR/ebin
+EXTRA_DB_NODE=$2
+
+# define environment variables
+NEXTIM_HOME=$ROOTDIR
+DATETIME=`date "+%Y%m%d-%H%M%S"`
+SASL_LOG_PATH="$ROOTDIR/var/log/${NODE_NAME}_sasl.log"
+ERL_CRASH_DUMP="$ROOTDIR/var/log/erl_crash_$DATETIME.dump"
+NEXTIM_SO_PATH="$ROOTDIR/priv/lib"
+NEXTIM_DB="$ROOTDIR/var/data/$NODE_NAME"
+NEXTIM_CONFIG_PATH="$ROOTDIR/etc/nextim/nextim"
+NEXTIM_LOG="$ROOTDIR/var/log"
+NEXTIM_LOG_LEVEL=4
+NEXTIM_LOG_PATH="$NEXTIM_LOG/${NODE_NAME}.log"
+RUNAPP=nextim
+CTLAPP=nextim_ctl
+
+# export global variables
+export NEXTIM_HOME
+export NEXTIM_SO_PATH
+export SASL_LOG_PATH
+export ERL_MAX_PORTS
+export ERL_MAX_ETS_TABLES
+export ERL_CRASH_DUMP
+
+ERLANG_OPTS="-smp $SMP +P $ERL_PROCESSES +K $POLL "
+
+[ -d $NEXTIM_DB ] || mkdir -p $NEXTIM_DB
+[ -d $NEXTIM_LOG ] || mkdir -p $NEXTIM_LOG
+
+ARGS=                                                                                                                                                                                                       
+while [ $# -ne 0 ] ; do                                                                                                                                                                                     
+    PARAM=$1                                                                                                                                                                                                
+    shift                                                                                                                                                                                                   
+    case $PARAM in                                                                                                                                                                                          
+        --) break ;;                                                                                                                                                                                        
+        --node) NODE_NAME=$1; shift ;;                                                                                                                                                                      
+        *) ARGS="$ARGS $PARAM" ;;                                                                                                                                                                           
+    esac                                                                                                                                                                                                    
+done          
+
+# start server
+# -noinput -detached \
+start ()
+{
+
+    $ERL $ERLANG_OPTS \
+	-sname $NODE_NAME \
+	-pa $ROOTDIR/ebin \
+    -setcookie public \
+	-mnesia dir "\"$NEXTIM_DB\"" \
+	-config $NEXTIM_CONFIG_PATH \
+	-sasl sasl_error_logger \{file,\"$SASL_LOG_PATH\"\} \
+	-boot start_sasl \
+	-s reloader start -s nextim start -log_level $NEXTIM_LOG_LEVEL -log_path $NEXTIM_LOG_PATH
+}
+
+# start cluster
+# -noinput -detached \
+cluster ()
+{
+
+    $ERL $ERLANG_OPTS \
+	-sname $NODE_NAME \
+	-pa $ROOTDIR/ebin \
+    -setcookie public \
+	-mnesia extra_db_nodes \[$EXTRA_DB_NODE\] \
+	-config $NEXTIM_CONFIG_PATH \
+	-sasl sasl_error_logger \{file,\"$SASL_LOG_PATH\"\} \
+	-boot start_sasl \
+	-s reloader start -s nextim start -log_level $NEXTIM_LOG_LEVEL -log_path $NEXTIM_LOG_PATH
+}
+
+stop()
+{
+    $ERL \
+	  -noinput -sname nextim_ctl \
+	  -pa $ROOTDIR/ebin \
+      -setcookie public \
+      -s nextim_ctl -extra nextim stop
+}
+
+# status
+status ()
+{
+    $ERL \  
+      -noinput -sname nextim_ctl \
+	  -pa $ROOTDIR/ebin \
+      -setcookie public \
+      -s nextim_ctl -extra nextim status
+}
+
+
+# common control function
+ctl ()
+{
+    $ERL \
+      -sname nextim_ctl \
+      -noinput \
+      -setcookie public \
+      -boot start_clean \
+      -pa $EBINS \
+      -s ${CTLAPP} -extra nextim $@
+    result=$?
+    case $result in
+    0) :;;
+    *) usage;;
+    esac
+    return $result
+}
+
+# display ctl usage
+usage ()
+{
+    echo ""
+    echo "Commands to start an nextim node:"
+    echo "  start  Start nextim"
+    echo "  cluster  Start cluster node"
+    echo "  stop   Stop nextim"
+    echo "  status Status of nextim"  
+    echo ""
+}
+
+case $ARGS in
+    ' start') start;;
+    ' stop') stop;;
+    ' live') live;;
+    ' cluster'*) cluster $ARGS;;
+    *) ctl $ARGS;;
+esac

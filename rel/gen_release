@@ -1,0 +1,74 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%! -smp disable
+-mode(compile).
+
+-define(SCRIPT_EXT, ".script").
+-define(TAR_EXT, ".tar.gz").
+-define(REL_DIR_BASE, "nextim").
+
+usage() ->
+    io:format("
+usage:
+    gen_release Config - generate the target system based Config file\n
+").
+
+main([]) ->
+    usage(),
+    halt(1);
+main([Config]) ->
+    %io:format("arg is ~p~n", [Args]),
+    io:format("config file is ~p~n", [Config]),
+    case file:read_file_info(Config) of
+        {error, _} ->
+            io:format("reltool config file not exists!~n"),
+            erlang:halt(1);
+        {ok, _} ->
+            ok
+    end,
+    {ok, Server} = reltool:start_server([{config, Config}]),
+    {ok, _RelConfig} = reltool:get_config(Server, true, true),
+    io:format("full config is :~p~n", [_RelConfig]),
+    
+    io:format("gen boot script ...~n", []),
+    gen_boot_script(Server, rel_name(Config)),
+    io:format("gen target system ...~n", []),
+    gen_target_system(Server).
+
+
+%% get the release name from the file
+rel_name(File) ->
+    filename:basename(File, ".config").
+
+%% gen the boot script and boot binary file
+gen_boot_script(Server, RelName) ->
+    {ok, ScriptData} = reltool:get_script(Server, RelName),
+    _ScriptStr = io_lib:format("~p.", [ScriptData]),
+    Script = RelName ++ ?SCRIPT_EXT,
+    io:format("the script file is ~p~n", [Script]),
+    %ok = file:write_file(Script, _ScriptStr),
+    %ok = systools:script2boot(RelName),
+    ok.
+
+%% gen the target system
+gen_target_system(Server) ->
+    {ok, Spec} = reltool:get_target_spec(Server),
+    RelDir = get_reldir(),
+    file:make_dir(RelDir),
+    ok = reltool:eval_target_spec(Spec, code:root_dir(), RelDir),
+    cp_start_clean_boot(RelDir).
+
+get_reldir() ->
+    ?REL_DIR_BASE.
+
+%% copy then some boot files to the target system
+cp_start_clean_boot(RelDir) ->
+    OTPBin = filename:join([code:root_dir(), "bin"]),
+    TargetBin = filename:join([RelDir, "bin"]),
+    Boots = ["start_clean.boot", "start_sasl.boot"],
+    [ {ok, _} = file:copy(to_file(OTPBin, Boot), to_file(TargetBin, Boot))
+        || Boot <- Boots].
+
+to_file(Base, File) ->
+    filename:join([Base, File]).
+
